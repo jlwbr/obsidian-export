@@ -1,6 +1,7 @@
 use eyre::{eyre, Result};
 use gumdrop::Options;
-use obsidian_export::{ExportError, Exporter, FrontmatterStrategy, WalkOptions};
+use obsidian_export::{ExportError, Exporter, FrontmatterStrategy, WalkOptions, PostprocessorResult};
+use obsidian_export::serde_yaml::Value;
 use std::{env, path::PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -46,6 +47,8 @@ struct Opts {
 
     #[options(no_short, help = "Don't process embeds recursively", default = "false")]
     no_recursive_embeds: bool,
+    #[options(no_short, help = "Only convert files with publish: true in the frontmatter", default = "false")]
+    only_publish: bool,
 }
 
 fn frontmatter_strategy_from_str(input: &str) -> Result<FrontmatterStrategy> {
@@ -82,6 +85,24 @@ fn main() {
     exporter.process_embeds_recursively(!args.no_recursive_embeds);
     exporter.walk_options(walk_options);
 
+    if args.only_publish {
+        println!("Jaaaa");
+        exporter.add_postprocessor(&|mut context, events| {
+            // This is the key that we are searching for.
+            let key = Value::String("publish".to_string());
+            // This is the value that we are searching for.
+            let value = Some(&Value::Bool(true));
+
+            // Check if key equals value
+            if context.frontmatter.get(&key) == value {
+                return (context, events, PostprocessorResult::Continue)
+            }
+
+            (context, events, PostprocessorResult::StopAndSkipNote)
+        });
+    }
+    
+
     if let Some(path) = args.start_at {
         exporter.start_at(path);
     }
@@ -100,7 +121,7 @@ fn main() {
                         "Error: {:?}",
                         eyre!(
                             "'{}' exceeds the maximum nesting limit of embeds",
-                            path.display()
+                            path.display()  
                         )
                     );
                     eprintln!("\nFile tree:");
